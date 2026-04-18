@@ -20,6 +20,7 @@ const OrderDetails = ({ orderId, onNavigate }) => {
     loadOrder();
   }, [orderId]);
 
+
   if (loading) {
     return <div>Chargement...</div>;
   }
@@ -33,16 +34,18 @@ const OrderDetails = ({ orderId, onNavigate }) => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center">
-        <button
-          onClick={() => onNavigate('orders')}
-          className="mr-4 text-indigo-600 hover:text-indigo-800 dark:text-indigo-400"
-        >
-          ← Retour
-        </button>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
-          Détails de la Commande #{order.id}
-        </h1>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center">
+          <button
+            onClick={() => onNavigate('orders')}
+            className="mr-4 text-indigo-600 hover:text-indigo-800 dark:text-indigo-400"
+          >
+            ← Retour
+          </button>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">
+            Détails de la Commande #{order.id}
+          </h1>
+        </div>
       </div>
 
       <div className="rounded-lg bg-white p-6 shadow dark:bg-slate-800">
@@ -146,6 +149,7 @@ const OrderDetails = ({ orderId, onNavigate }) => {
           </div>
         </div>
       </div>
+
     </div>
   );
 };

@@ -18,21 +18,40 @@ const User = sequelize.define('User', {
     },
     email: {
         type: DataTypes.STRING(150),
-        allowNull: false,
+        allowNull: true,
         unique: false
     },
     login: {
         type: DataTypes.STRING(100),
-        allowNull: false,
-        unique: false
+        allowNull: true,
+        unique: false,
+        validate: {}
     },
     password: {
         type: DataTypes.STRING(255),
-        allowNull: false
+        allowNull: true,
+        validate: {}
     },
     role: {
         type: DataTypes.ENUM('admin', 'client'),
         defaultValue: 'client'
+    },
+    is_active: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+        allowNull: false
+    },
+    telephone: {
+        type: DataTypes.STRING(20),
+        allowNull: true
+    },
+    entreprise: {
+        type: DataTypes.STRING(150),
+        allowNull: true
+    },
+    adresse: {
+        type: DataTypes.TEXT,
+        allowNull: true
     }
 }, {
     tableName: 'users',

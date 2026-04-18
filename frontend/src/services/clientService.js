@@ -1,175 +1,195 @@
-import { supportTickets, clients as defaultClients } from '../data';
+import { getClients, getClientById, createClient, updateClient, deleteClient } from './apiService';
+import { getCookie, setCookie } from '../utils/cookies';
+import { API_BASE_URL } from '../utils/constants';
 
-const PROFILE_KEY = 'gestion_profile';
-const NOTIFICATIONS_KEY = 'gestion_notifications';
-const SUPPORT_KEY = 'gestion_support';
-const CLIENTS_KEY = 'gestion_clients';
-
-const getStoredProfile = () => {
-  const stored = localStorage.getItem(PROFILE_KEY);
-  if (stored) return JSON.parse(stored);
-  const user = localStorage.getItem('user');
-  return user ? JSON.parse(user) : null;
+const getAuthHeaders = () => {
+  const token = getCookie('token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token && { 'Authorization': `Bearer ${token}` }),
+  };
 };
 
-const saveProfile = (profile) => {
-  localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
-  localStorage.setItem('user', JSON.stringify(profile));
+export const getClientsList = async () => {
+  try {
+    return await getClients();
+  } catch (error) {
+    console.error('Erreur getClientsList:', error);
+    return [];
+  }
 };
 
-const getStoredNotifications = () => {
-  const stored = localStorage.getItem(NOTIFICATIONS_KEY);
-  if (stored) return JSON.parse(stored);
-  const defaultNotifications = supportTickets.map((ticket) => ({
-    id: ticket.id,
-    message: ticket.subject,
-    type: ticket.status === 'Ouvert' ? 'warning' : 'info',
-    createdAt: ticket.date,
-    read: ticket.status !== 'Ouvert',
-  }));
-  localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(defaultNotifications));
-  return defaultNotifications;
+export const getClientByIdService = async (id) => {
+  try {
+    return await getClientById(id);
+  } catch (error) {
+    console.error('Erreur getClientByIdService:', error);
+    return null;
+  }
 };
 
-const saveNotifications = (notifications) => {
-  localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(notifications));
+export const createClientService = async (clientData) => {
+  try {
+    return await createClient(clientData);
+  } catch (error) {
+    console.error('Erreur createClientService:', error);
+    throw error;
+  }
 };
 
-const getStoredClients = () => {
-  const stored = localStorage.getItem(CLIENTS_KEY);
-  return stored ? JSON.parse(stored) : [...defaultClients];
+export const updateClientService = async (id, clientData) => {
+  try {
+    return await updateClient(id, clientData);
+  } catch (error) {
+    console.error('Erreur updateClientService:', error);
+    throw error;
+  }
 };
 
-const saveClients = (clients) => {
-  localStorage.setItem(CLIENTS_KEY, JSON.stringify(clients));
-};
-
-const getCurrentUser = () => {
-  const stored = localStorage.getItem('user');
-  return stored ? JSON.parse(stored) : null;
+export const deleteClientService = async (id) => {
+  try {
+    return await deleteClient(id);
+  } catch (error) {
+    console.error('Erreur deleteClientService:', error);
+    throw error;
+  }
 };
 
 export const getClientProfile = async () => {
-  const user = getCurrentUser();
-  if (!user) return null;
-  const clients = getStoredClients();
-  const client = clients.find((item) => item.id === user.id || item.email === user.email || item.name === user.name);
-  const profileSource = client || user;
-  const [firstName = '', ...restName] = (profileSource.name || '').split(' ');
-  const lastName = restName.join(' ');
+  try {
+    const userCookie = getCookie('user');
+    const user = userCookie ? JSON.parse(userCookie) : null;
+    if (!user) return null;
 
-  return {
-    firstName,
-    lastName,
-    email: profileSource.email || '',
-    phone: profileSource.phone || '',
-  };
+    // Pour l'instant, on utilise les données utilisateur stockées dans les cookies
+    // Plus tard, on pourra faire un appel API pour récupérer le profil complet
+    const [firstName = '', ...restName] = (user.name || '').split(' ');
+    const lastName = restName.join(' ');
+
+    return {
+      firstName,
+      lastName,
+      email: user.email || '',
+      phone: user.phone || '',
+    };
+  } catch (error) {
+    console.error('Erreur getClientProfile:', error);
+    return null;
+  }
 };
 
 export const updateClientProfile = async (profileData) => {
-  const user = getCurrentUser();
-  if (!user) throw new Error('Profil introuvable');
+  try {
+    const userCookie = getCookie('user');
+    const user = userCookie ? JSON.parse(userCookie) : null;
+    if (!user) throw new Error('Profil introuvable');
 
-  const profileName = [profileData.firstName, profileData.lastName].filter(Boolean).join(' ') || user.name;
-  const clients = getStoredClients();
-  const updatedClients = clients.map((client) =>
-    client.id === user.id
-      ? {
-          ...client,
-          name: profileName,
-          email: profileData.email?.trim().toLowerCase() || client.email,
-          phone: profileData.phone || client.phone || '',
-        }
-      : client
-  );
-  saveClients(updatedClients);
+    const profileName = [profileData.firstName, profileData.lastName].filter(Boolean).join(' ') || user.name;
 
-  const updatedUser = {
-    ...user,
-    name: profileName,
-    email: profileData.email?.trim().toLowerCase() || user.email,
-  };
-  localStorage.setItem('user', JSON.stringify(updatedUser));
-  saveProfile(updatedUser);
+    const updatedUser = {
+      ...user,
+      name: profileName,
+      email: profileData.email?.trim().toLowerCase() || user.email,
+      phone: profileData.phone || user.phone || '',
+    };
 
-  return updatedUser;
+    setCookie('user', JSON.stringify(updatedUser));
+
+    // TODO: Appeler l'API pour mettre à jour le profil côté serveur
+    // await updateClient(user.id, { name: profileName, email: updatedUser.email, phone: updatedUser.phone });
+
+    return updatedUser;
+  } catch (error) {
+    console.error('Erreur updateClientProfile:', error);
+    throw error;
+  }
 };
 
 export const changePassword = async (passwordData) => {
-  const user = getCurrentUser();
-  if (!user) throw new Error('Profil introuvable');
-
-  const clients = getStoredClients();
-  const clientIndex = clients.findIndex((client) => client.id === user.id);
-  if (clientIndex === -1) throw new Error('Profil introuvable');
-  if (clients[clientIndex].password !== passwordData.oldPassword) {
-    throw new Error('Ancien mot de passe incorrect');
+  try {
+    // TODO: Implémenter le changement de mot de passe via API
+    // Pour l'instant, on simule le succès
+    console.log('Changement de mot de passe demandé:', passwordData);
+    return { success: true };
+  } catch (error) {
+    console.error('Erreur changePassword:', error);
+    throw error;
   }
-
-  clients[clientIndex] = {
-    ...clients[clientIndex],
-    password: passwordData.newPassword,
-  };
-  saveClients(clients);
-
-  return { success: true };
 };
 
 export const submitSupportForm = async (supportData) => {
-  const stored = JSON.parse(localStorage.getItem(SUPPORT_KEY) || '[]');
-  const ticket = {
-    id: `TKT-${Math.floor(100 + Math.random() * 900)}`,
-    subject: supportData.subject,
-    status: 'Ouvert',
-    client: getStoredProfile()?.name || 'Client',
-    date: new Date().toISOString().split('T')[0],
-    message: supportData.message,
-  };
-  localStorage.setItem(SUPPORT_KEY, JSON.stringify([ticket, ...stored]));
-  return ticket;
+  try {
+    // TODO: Implémenter l'envoi du formulaire de support via API
+    // Pour l'instant, on simule l'envoi
+    console.log('Formulaire de support soumis:', supportData);
+    return {
+      id: `TKT-${Math.floor(100 + Math.random() * 900)}`,
+      subject: supportData.subject,
+      status: 'Ouvert',
+      message: supportData.message,
+    };
+  } catch (error) {
+    console.error('Erreur submitSupportForm:', error);
+    throw error;
+  }
 };
 
 export const getNotifications = async () => {
-  return getStoredNotifications();
+  // TODO: Récupérer les notifications via API
+  // Pour l'instant, on retourne un tableau vide
+  return [];
 };
 
 export const markNotificationAsRead = async (id) => {
-  const notifications = getStoredNotifications().map((notification) =>
-    notification.id === id ? { ...notification, read: true } : notification
-  );
-  saveNotifications(notifications);
-  return notifications.find((notification) => notification.id === id);
+  try {
+    // TODO: Marquer la notification comme lue via API
+    console.log('Notification marquée comme lue:', id);
+    return { success: true };
+  } catch (error) {
+    console.error('Erreur markNotificationAsRead:', error);
+    throw error;
+  }
 };
 
-export const getClients = async () => {
-  return getStoredClients();
+// Fonctions exportées pour la compatibilité
+export { getClientsList as getClients };
+export { createClientService as createClient };
+export { updateClientService as updateClient };
+export { deleteClientService as deleteClient };
+
+export const getPendingUsers = async () => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/users/pending`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      throw new Error('Erreur lors de la récupération des utilisateurs en attente');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Erreur getPendingUsers:', error);
+    return [];
+  }
 };
 
-export const createClient = async (clientData) => {
-  const clients = getStoredClients();
-  const newClient = {
-    ...clientData,
-    id: Date.now(),
-    orders: 0,
-    totalSpend: 0,
-  };
-  const updated = [newClient, ...clients];
-  saveClients(updated);
-  return newClient;
-};
+export const approveUser = async (id, approved = true) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/users/${id}/approve`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ approved }),
+    });
 
-export const updateClient = async (id, clientData) => {
-  const clients = getStoredClients();
-  const updated = clients.map((client) =>
-    client.id === id ? { ...client, ...clientData } : client
-  );
-  saveClients(updated);
-  return updated.find((client) => client.id === id);
-};
+    if (!response.ok) {
+      throw new Error('Erreur lors de l\'approbation de l\'utilisateur');
+    }
 
-export const deleteClient = async (id) => {
-  const clients = getStoredClients();
-  const updated = clients.filter((client) => client.id !== id);
-  saveClients(updated);
-  return { success: true };
+    return await response.json();
+  } catch (error) {
+    console.error('Erreur approveUser:', error);
+    throw error;
+  }
 };

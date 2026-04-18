@@ -71,17 +71,24 @@ export const exportOrderToPdf = async (order) => {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.text(order.client || 'N/A', customerBoxX + 8, orderBoxY + 34);
-  doc.text(order.clientEmail || '', customerBoxX + 8, orderBoxY + 48);
-  doc.text(order.address || '', customerBoxX + 8, orderBoxY + 62);
+  doc.text(order.clientEmail || order.email || '', customerBoxX + 8, orderBoxY + 48);
+  doc.text(order.address || order.adresse || '', customerBoxX + 8, orderBoxY + 62);
 
   const tableY = orderBoxY + orderBoxHeight + 25;
-  const items = order.items && order.items.length > 0 ? order.items : [{ code: '-', label: '-', qty: 0, price: 0 }];
-  const tableBody = items.map((item) => [
-    item.code || '-',
-    item.label || '-',
-    item.qty || 0,
+  const rawItems = order.items && order.items.length > 0 ? order.items : order.lignes && order.lignes.length > 0 ? order.lignes : [{ code: '-', label: '-', qty: 0, price: 0 }];
+  const normalizedItems = rawItems.map((item) => ({
+    code: item.code || item.code_article || '-',
+    label: item.label || item.details || item.code_article || '-',
+    qty: Number(item.qty ?? item.qte ?? 0),
+    price: Number(item.price ?? item.prix_unitaire ?? 0),
+  }));
+
+  const tableBody = normalizedItems.map((item) => [
+    item.code,
+    item.label,
+    item.qty,
     formatCurrency(item.price),
-    formatCurrency((item.qty || 0) * (item.price || 0)),
+    formatCurrency(item.qty * item.price),
   ]);
 
   autoTable(doc, {
@@ -107,7 +114,7 @@ export const exportOrderToPdf = async (order) => {
   });
 
   const finalY = (doc.lastAutoTable?.finalY ?? tableY) + 20;
-  const htValue = items.reduce((sum, item) => sum + ((item.qty || 0) * (item.price || 0)), 0);
+  const htValue = normalizedItems.reduce((sum, item) => sum + ((item.qty || 0) * (item.price || 0)), 0);
   const tvaRate = order.tva || 20;
   const tvaValue = htValue * (tvaRate / 100);
   const totalTtc = htValue + tvaValue;

@@ -19,9 +19,26 @@ const Commande = sequelize.define('Commande', {
         type: DataTypes.TEXT,
         allowNull: true
     },
+    client_email: {
+        type: DataTypes.STRING(255),
+        allowNull: true
+    },
+    delivery: {
+        type: DataTypes.DATEONLY,
+        allowNull: true
+    },
+    modified_by: {
+        type: DataTypes.STRING(100),
+        allowNull: true
+    },
     user_id: {
         type: DataTypes.INTEGER,
         allowNull: false
+    },
+    status: {
+        type: DataTypes.ENUM('En attente', 'En cours', 'Livrée', 'Annulée'),
+        allowNull: false,
+        defaultValue: 'En attente'
     }
 }, {
     tableName: 'commandes',

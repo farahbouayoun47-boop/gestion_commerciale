@@ -10,7 +10,6 @@ export const statusClasses = {
   'En cours': 'bg-sky-500/15 text-sky-300 ring-sky-400/20',
   Livrée: 'bg-emerald-500/15 text-emerald-300 ring-emerald-400/20',
   Ouvert: 'bg-rose-500/15 text-rose-300 ring-rose-400/20',
-  'En cours': 'bg-sky-500/15 text-sky-300 ring-sky-400/20',
 };
 
 export const getStatusSpan = (status) => {

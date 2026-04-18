@@ -1,28 +1,35 @@
-const Navigation = ({ role, currentView, onChange, unreadSupport }) => {
+const Navigation = ({ role, currentView, onChange, unreadSupport = 0, userName, onLogout, onClose }) => {
   const adminMenu = [
     { key: 'overview', label: 'Tableau de bord' },
     { key: 'orders', label: 'Commandes' },
     { key: 'clients', label: 'Clients' },
-    { key: 'products', label: 'Produits' },
-    { key: 'support', label: 'Support' },
     { key: 'profile', label: 'Profil' },
   ];
 
   const clientMenu = [
     { key: 'overview', label: 'Tableau de bord' },
     { key: 'orders', label: 'Mes commandes' },
-    { key: 'support', label: 'Support' },
     { key: 'profile', label: 'Profil' },
   ];
 
   const menu = role === 'admin' ? adminMenu : clientMenu;
 
   return (
-    <aside className="hidden w-72 shrink-0 rounded-[2rem] border border-slate-800 bg-slate-900/80 p-6 shadow-soft lg:block">
-      <div className="mb-8">
-        <p className="text-sm uppercase tracking-[0.3em] text-slate-500">Espace {role === 'admin' ? 'administrateur' : 'client'}</p>
-        <h2 className="mt-4 text-2xl font-semibold text-white">Gestion Commerciale</h2>
+    <aside className="w-72 shrink-0 rounded-[2rem] border border-slate-800 bg-slate-900/80 p-6 shadow-soft">
+      <div className="mb-8 flex items-start justify-between gap-4">
+        <div>
+          {userName && <p className="mt-2 text-sm text-slate-400">Bienvenue, {userName}</p>}
+        </div>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="rounded-full border border-slate-700 bg-slate-900 px-2 py-1 text-slate-400 hover:bg-slate-800 md:hidden"
+          >
+            ✕
+          </button>
+        )}
       </div>
+
       <nav className="space-y-2">
         {menu.map((item) => (
           <button
@@ -31,12 +38,20 @@ const Navigation = ({ role, currentView, onChange, unreadSupport }) => {
             className={`w-full rounded-3xl px-4 py-3 text-left text-sm font-semibold transition ${currentView === item.key ? 'bg-slate-800 text-white ring-1 ring-sky-500/30' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}
           >
             {item.label}
-            {item.key === 'support' && unreadSupport > 0 && (
-              <span className="ml-2 inline-flex rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-semibold text-white">{unreadSupport}</span>
-            )}
           </button>
         ))}
       </nav>
+
+      {onLogout && (
+        <div className="mt-6 border-t border-slate-800 pt-6">
+          <button
+            onClick={onLogout}
+            className="w-full rounded-3xl bg-red-600 px-4 py-3 text-sm font-semibold text-white hover:bg-red-700"
+          >
+            Déconnexion
+          </button>
+        </div>
+      )}
     </aside>
   );
 };

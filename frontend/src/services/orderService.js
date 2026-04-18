@@ -1,20 +1,4 @@
-import { orders } from '../data';
-
-const STORAGE_KEY = 'gestion_commandes';
-
-const getStoredOrders = () => {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  return stored ? JSON.parse(stored) : [...orders];
-};
-
-const saveOrders = (data) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-};
-
-const getCurrentUser = () => {
-  const user = localStorage.getItem('user');
-  return user ? JSON.parse(user) : null;
-};
+import { getOrders, getOrderById, createOrder, updateOrder, deleteOrder } from './apiService';
 
 const sortOrdersByDate = (ordersList) => {
   return [...ordersList].sort((a, b) => {
@@ -25,79 +9,150 @@ const sortOrdersByDate = (ordersList) => {
 };
 
 export const getClientCommandes = async () => {
-  const allOrders = getStoredOrders();
-  const user = getCurrentUser();
-
-  const visibleOrders = user?.role === 'client'
-    ? allOrders.filter((order) =>
-        order.clientEmail === user.email ||
-        order.client === user.name ||
-        order.client === user.email
-      )
-    : allOrders;
-
-  return sortOrdersByDate(visibleOrders);
+  try {
+    const orders = await getOrders();
+    // Transform the data to match frontend expectations
+    const transformedOrders = orders.map(order => {
+      const totalAmount = order.LigneCommandes ? 
+        order.LigneCommandes.reduce((sum, ligne) => sum + parseFloat(ligne.prix_ttc || 0), 0) : 0;
+      
+      // Priorité: 1) client_name field, 2) client field, 3) Client relation, 4) Unknown
+      let clientName = 'Client inconnu';
+      let clientEmail = '';
+      
+      if (order.client_name && order.client_name !== 'Client inconnu') {
+        // Direct client_name field from backend
+        clientName = order.client_name;
+        clientEmail = order.clientEmail || '';
+      } else if (order.client && typeof order.client === 'string' && order.client !== 'Client inconnu') {
+        // Direct client field as string
+        clientName = order.client;
+        clientEmail = order.clientEmail || '';
+      } else if (order.User) {
+        // Sequelize relation object from backend
+        clientName = `${order.User.prenom || ''} ${order.User.nom || ''}`.trim() || 'Client inconnu';
+        clientEmail = order.User.email || '';
+      } else if (order.Client) {
+        // Older relation naming fallback
+        clientName = `${order.Client.prenom || ''} ${order.Client.nom || ''}`.trim() || 'Client inconnu';
+        clientEmail = order.Client.email || '';
+      } else if (order.client_id || order.user_id) {
+        // Has client id but no relation loaded
+        clientName = 'Client inconnu';
+      }
+      
+      const lignesSource = order.LigneCommandes || order.lignes || [];
+      const transformedLignes = lignesSource.map(ligne => ({
+        code: ligne.code_article || ligne.code || '',
+        label: ligne.details || ligne.code_article || ligne.label || '',
+        qty: ligne.qte || ligne.qty || 1,
+        price: parseFloat(ligne.prix_unitaire || ligne.price || 0) || 0
+      }));
+      
+      return {
+        id: order.id,
+        numero: order.numero,
+        date: order.date,
+        address: order.adresse || order.address || '',
+        adresse: order.adresse || order.address || '',
+        client: clientName,
+        clientEmail: clientEmail,
+        client_id: order.client_id,
+        delivery: order.delivery || null,
+        tva: lignesSource[0]?.tva || order.tva || 0,
+        amount: totalAmount,
+        status: order.status || 'En attente',
+        user_id: order.user_id,
+        items: transformedLignes,
+        lignes: lignesSource
+      };
+    });
+    return sortOrdersByDate(transformedOrders);
+  } catch (error) {
+    console.error('Erreur getClientCommandes:', error);
+    return [];
+  }
 };
 
 export const getCommandeById = async (id) => {
-  const allOrders = getStoredOrders();
-  return allOrders.find((order) => order.id === id || order.numero === id) || null;
+  try {
+    return await getOrderById(id);
+  } catch (error) {
+    console.error('Erreur getCommandeById:', error);
+    return null;
+  }
 };
 
 export const createCommande = async (commandeData) => {
-  const allOrders = getStoredOrders();
-  const nextId = `CMD-${Math.floor(1000 + Math.random() * 9000)}`;
-  const newOrder = {
-    ...commandeData,
-    id: nextId,
-    numero: nextId,
-    status: commandeData.status || 'En attente',
-    amount: commandeData.items.reduce((sum, item) => sum + item.qty * item.price, 0),
-  };
-  const updated = [newOrder, ...allOrders];
-  saveOrders(updated);
-  return newOrder;
+  try {
+    return await createOrder(commandeData);
+  } catch (error) {
+    console.error('Erreur createCommande:', error);
+    throw error;
+  }
 };
 
 export const updateCommande = async (id, commandeData) => {
-  const allOrders = getStoredOrders();
-  const updated = allOrders.map((order) =>
-    order.id === id || order.numero === id ? { ...order, ...commandeData } : order
-  );
-  saveOrders(updated);
-  return updated.find((order) => order.id === id || order.numero === id);
+  try {
+    return await updateOrder(id, commandeData);
+  } catch (error) {
+    console.error('Erreur updateCommande:', error);
+    throw error;
+  }
 };
 
 export const deleteCommande = async (id) => {
-  const allOrders = getStoredOrders();
-  const updated = allOrders.filter((order) => order.id !== id && order.numero !== id);
-  saveOrders(updated);
-  return { success: true };
+  try {
+    return await deleteOrder(id);
+  } catch (error) {
+    console.error('Erreur deleteCommande:', error);
+    throw error;
+  }
 };
 
 export const downloadInvoice = async (id) => {
-  const order = await getCommandeById(id);
-  const content = `Facture pour la commande ${order?.numero || id}\nClient: ${order?.client || 'N/A'}\nMontant: ${order?.amount || 0} MAD`;
-  return new Blob([content], { type: 'application/pdf' });
+  try {
+    const order = await getOrderById(id);
+    const content = `Facture pour la commande ${order?.numero || id}\nClient: ${order?.client || 'N/A'}\nMontant: ${order?.amount || 0} MAD`;
+    return new Blob([content], { type: 'application/pdf' });
+  } catch (error) {
+    console.error('Erreur downloadInvoice:', error);
+    throw error;
+  }
 };
 
 export const getCommandesByDateRange = async (startDate, endDate) => {
-  const allOrders = getStoredOrders();
-  return allOrders.filter((order) => order.date >= startDate && order.date <= endDate);
+  try {
+    const orders = await getOrders();
+    return orders.filter((order) => order.date >= startDate && order.date <= endDate);
+  } catch (error) {
+    console.error('Erreur getCommandesByDateRange:', error);
+    return [];
+  }
 };
 
 export const getCommandesByStatus = async (status) => {
-  const allOrders = getStoredOrders();
-  return status === 'all' ? allOrders : allOrders.filter((order) => order.status === status);
+  try {
+    const orders = await getOrders();
+    return status === 'all' ? orders : orders.filter((order) => order.status === status);
+  } catch (error) {
+    console.error('Erreur getCommandesByStatus:', error);
+    return [];
+  }
 };
 
 export const getOrderStatistics = async () => {
-  const allOrders = getStoredOrders();
-  const totalOrders = allOrders.length;
-  const pending = allOrders.filter((order) => order.status === 'En attente').length;
-  const inProgress = allOrders.filter((order) => order.status === 'En cours').length;
-  const delivered = allOrders.filter((order) => order.status === 'Livrée').length;
-  const revenue = allOrders.reduce((sum, order) => sum + (order.amount || 0), 0);
+  try {
+    const orders = await getOrders();
+    const totalOrders = orders.length;
+    const pending = orders.filter((order) => order.status === 'En attente').length;
+    const inProgress = orders.filter((order) => order.status === 'En cours').length;
+    const delivered = orders.filter((order) => order.status === 'Livrée').length;
+    const revenue = orders.reduce((sum, order) => sum + (order.amount || 0), 0);
 
-  return { totalOrders, pending, inProgress, delivered, revenue };
+    return { totalOrders, pending, inProgress, delivered, revenue };
+  } catch (error) {
+    console.error('Erreur getOrderStatistics:', error);
+    return { totalOrders: 0, pending: 0, inProgress: 0, delivered: 0, revenue: 0 };
+  }
 };

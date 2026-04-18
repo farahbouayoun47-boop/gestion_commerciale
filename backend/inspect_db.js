@@ -11,3 +11,4 @@ const sequelize = require('./config/db');
     await sequelize.close();
   }
 })();
+

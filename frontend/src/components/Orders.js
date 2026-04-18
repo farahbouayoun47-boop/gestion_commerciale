@@ -1,11 +1,14 @@
 import { useMemo, useState } from 'react';
 import { formatCurrency, getStatusSpan } from '../utils';
+import OrderEditForm from './client/OrderEditForm';
 
 const Orders = ({ orders, onSelectOrder, role }) => {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [editingOrder, setEditingOrder] = useState(null);
+  const [showEditForm, setShowEditForm] = useState(false);
 
   const filteredOrders = useMemo(() => {
     const query = search.toLowerCase();
@@ -17,6 +20,20 @@ const Orders = ({ orders, onSelectOrder, role }) => {
       return matchQuery && matchStatus && matchStartDate && matchEndDate;
     });
   }, [orders, search, status, startDate, endDate]);
+
+  const handleEditOrder = (order) => {
+    setEditingOrder(order);
+    setShowEditForm(true);
+  };
+
+  const closeEditForm = () => {
+    setEditingOrder(null);
+    setShowEditForm(false);
+  };
+
+  const handleOrderSaved = () => {
+    closeEditForm();
+  };
 
   return (
     <div className="space-y-6">
@@ -83,9 +100,15 @@ const Orders = ({ orders, onSelectOrder, role }) => {
                 <td className="px-6 py-4">
                   <button
                     onClick={() => onSelectOrder(order)}
-                    className="rounded-3xl bg-slate-800 px-4 py-2 text-sm text-slate-100 transition hover:bg-slate-700"
+                    className="rounded-3xl bg-slate-800 px-4 py-2 text-sm text-slate-100 transition hover:bg-slate-700 mr-2"
                   >
                     Détails
+                  </button>
+                  <button
+                    onClick={() => handleEditOrder(order)}
+                    className="rounded-3xl bg-amber-700 px-4 py-2 text-sm text-slate-100 transition hover:bg-amber-600"
+                  >
+                    Modifier
                   </button>
                 </td>
               </tr>
@@ -98,6 +121,15 @@ const Orders = ({ orders, onSelectOrder, role }) => {
           <h3 className="text-lg font-semibold text-white">Créer une nouvelle commande</h3>
           <p className="mt-2 text-slate-400">La création de commande est gérée dans le back-office en production.</p>
         </div>
+      )}
+
+      {/* Order Edit Form Modal */}
+      {showEditForm && editingOrder && (
+        <OrderEditForm
+          order={editingOrder}
+          onClose={closeEditForm}
+          onSave={handleOrderSaved}
+        />
       )}
     </div>
   );

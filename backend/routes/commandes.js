@@ -5,6 +5,70 @@ const ExcelJS = require('exceljs');
 const multer = require('multer');
 const router = express.Router();
 
+const resolveUserIdFromClient = async (client) => {
+    if (!client) return null;
+
+    let clientValue = client;
+    if (typeof client === 'object') {
+        if (client.id) return client.id;
+        if (client.user_id) return client.user_id;
+        if (client.client_id) return client.client_id;
+        if (client.value) clientValue = client.value;
+        else if (client.login) clientValue = client.login;
+        else if (client.email) clientValue = client.email;
+        else if (client.label) clientValue = client.label;
+        else if (client.name) clientValue = client.name;
+        else {
+            const name = `${client.prenom || ''} ${client.nom || ''}`.trim();
+            if (name) clientValue = name;
+        }
+    }
+
+    const trimmed = String(clientValue).trim();
+    if (!trimmed) return null;
+    if (/^\d+$/.test(trimmed)) return Number(trimmed);
+
+    let user = await User.findOne({ where: { login: trimmed } });
+    if (!user) {
+        user = await User.findOne({ where: { email: trimmed } });
+    }
+    if (!user) {
+        const parts = trimmed.split(' ').filter(Boolean);
+        if (parts.length >= 2) {
+            const prenom = parts[0];
+            const nom = parts.slice(1).join(' ');
+            user = await User.findOne({ where: { prenom, nom } });
+        }
+    }
+
+    return user ? user.id : null;
+};
+
+const formatCommandeWithClient = (commande) => {
+    const data = commande.toJSON();
+    const client = data.User ? {
+        id: data.User.id,
+        nom: data.User.nom,
+        prenom: data.User.prenom,
+        login: data.User.login,
+        email: data.User.email
+    } : null;
+
+    const client_name = data.User
+        ? [data.User.prenom, data.User.nom].filter(Boolean).join(' ') || data.User.login || data.User.email
+        : null;
+
+    return {
+        ...data,
+        client_id: data.user_id,
+        client,
+        client_name,
+        clientEmail: data.client_email || data.User?.email || null,
+        delivery: data.delivery || null,
+        modified_by: data.modified_by || null
+    };
+};
+
 // Configuration multer pour l'upload des fichiers Excel
 const upload = multer({
     storage: multer.memoryStorage(),
@@ -35,12 +99,12 @@ router.get('/', async (req, res) => {
         const commandes = await Commande.findAll({
             where,
             include: [
-                { model: User, attributes: ['nom', 'prenom', 'login'] },
+                { model: User, attributes: ['id', 'nom', 'prenom', 'login', 'email'] },
                 { model: LigneCommande }
             ]
         });
         
-        res.json(commandes);
+        res.json(commandes.map(formatCommandeWithClient));
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -276,18 +340,38 @@ router.post('/import', isAdmin, upload.single('excelFile'), async (req, res) => 
 // POST /commandes - Ajouter une commande
 router.post('/', async (req, res) => {
     try {
-        const { numero, date, adresse, user_id, lignes } = req.body;
+        const { numero, date, adresse, user_id, client_id, client, lignes, status, clientEmail, delivery } = req.body;
         
-        // Vérifier les droits
-        if (req.user.role !== 'admin' && user_id !== req.user.id) {
-            return res.status(403).json({ message: 'Action non autorisée' });
+        // Accept user_id, client_id, or client name/login/email/object from frontend
+        let finalUserId = user_id || client_id;
+        let foundUser = null;
+
+        if (req.user.role !== 'admin') {
+            finalUserId = req.user.id;
+        }
+
+        if (!finalUserId && client) {
+            finalUserId = await resolveUserIdFromClient(client);
+        }
+
+        // Validate that we have a user_id
+        if (!finalUserId) {
+            return res.status(400).json({ message: 'user_id, client_id ou client est requis' });
+        }
+
+        const user = foundUser || await User.findByPk(finalUserId);
+        if (!user) {
+            return res.status(404).json({ message: 'Client non trouvé' });
         }
         
         const commande = await Commande.create({
             numero,
             date,
             adresse,
-            user_id
+            client_email: clientEmail || null,
+            delivery: delivery || null,
+            user_id: finalUserId,
+            status: status || 'En attente'
         });
         
         if (lignes && lignes.length > 0) {
@@ -306,24 +390,16 @@ router.post('/', async (req, res) => {
                     details: ligne.details
                 });
             }
-        } else {
-            // Créer automatiquement une ligne vide pour permettre l'édition
-            await LigneCommande.create({
-                commande_id: commande.id,
-                code_article: '',
-                qte: 1,
-                prix_unitaire: 0.00,
-                prix_ttc: 0.00,
-                tva: 0.00,
-                details: null
-            });
         }
         
         const commandeComplet = await Commande.findByPk(commande.id, {
-            include: [LigneCommande]
+            include: [
+                { model: User, attributes: ['nom', 'prenom', 'login', 'email'] },
+                LigneCommande
+            ]
         });
         
-        res.status(201).json(commandeComplet);
+        res.status(201).json(formatCommandeWithClient(commandeComplet));
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -342,10 +418,100 @@ router.put('/:id', async (req, res) => {
             return res.status(403).json({ message: 'Action non autorisée' });
         }
         
-        const { numero, date, adresse } = req.body;
-        await commande.update({ numero, date, adresse });
-        
-        res.json(commande);
+        const oldCommande = { ...commande.dataValues };
+        const { numero, date, adresse, status, user_id, client_id, client, lignes } = req.body;
+
+        const updateData = {};
+        if (numero !== undefined) updateData.numero = numero;
+        if (date !== undefined) updateData.date = date;
+        if (adresse !== undefined) updateData.adresse = adresse;
+        if (status !== undefined) updateData.status = status;
+
+        let finalUserId = user_id || client_id;
+        if (finalUserId === undefined && client) {
+            finalUserId = await resolveUserIdFromClient(client);
+        }
+
+        if (finalUserId !== undefined) {
+            if (req.user.role !== 'admin') {
+                return res.status(403).json({ message: 'Seul un administrateur peut changer le client' });
+            }
+            const newUser = await User.findByPk(finalUserId);
+            if (!newUser) {
+                return res.status(404).json({ message: 'Client non trouvé' });
+            }
+            updateData.user_id = finalUserId;
+        }
+
+        await commande.update(updateData);
+
+        // Recharger la commande avec les nouvelles valeurs
+        await commande.reload();
+
+        const changes = {};
+
+        // Traiter les lignes d'abord
+        if (lignes && lignes.length > 0) {
+            const ligneData = lignes[0];
+            const line = await LigneCommande.findOne({ where: { commande_id: commande.id } });
+            const oldLigne = line ? { ...line.dataValues } : null;
+            
+            const prixTtc = ligneData.prix_ttc !== undefined
+                ? ligneData.prix_ttc
+                : parseFloat((ligneData.prix_unitaire * ligneData.qte * (1 + (ligneData.tva || 0) / 100)).toFixed(2));
+
+            if (line) {
+                await line.update({
+                    code_article: ligneData.code_article,
+                    qte: ligneData.qte,
+                    prix_unitaire: ligneData.prix_unitaire,
+                    prix_ttc: prixTtc,
+                    tva: ligneData.tva,
+                    details: ligneData.details
+                });
+                // Ajouter les changements de ligne
+                if (oldLigne && oldLigne.code_article !== ligneData.code_article) changes.code_article = { old: oldLigne.code_article, new: ligneData.code_article };
+                if (oldLigne && oldLigne.qte !== ligneData.qte) changes.qte = { old: oldLigne.qte, new: ligneData.qte };
+                if (oldLigne && oldLigne.prix_unitaire !== ligneData.prix_unitaire) changes.prix_unitaire = { old: oldLigne.prix_unitaire, new: ligneData.prix_unitaire };
+                if (oldLigne && oldLigne.prix_ttc !== prixTtc) changes.prix_ttc = { old: oldLigne.prix_ttc, new: prixTtc };
+                if (oldLigne && oldLigne.tva !== ligneData.tva) changes.tva = { old: oldLigne.tva, new: ligneData.tva };
+                if (oldLigne && (oldLigne.details || '') !== (ligneData.details || '')) changes.details = { old: oldLigne.details, new: ligneData.details };
+            } else {
+                await LigneCommande.create({
+                    commande_id: commande.id,
+                    code_article: ligneData.code_article,
+                    qte: ligneData.qte,
+                    prix_unitaire: ligneData.prix_unitaire,
+                    prix_ttc: prixTtc,
+                    tva: ligneData.tva,
+                    details: ligneData.details
+                });
+                changes.ligne_created = { new: ligneData };
+            }
+        }
+
+        // Détecter les changements de commande
+        if (numero !== undefined && oldCommande.numero !== numero) changes.numero = { old: oldCommande.numero, new: numero };
+        if (date !== undefined && oldCommande.date !== date) changes.date = { old: oldCommande.date, new: date };
+        if (adresse !== undefined && oldCommande.adresse !== adresse) changes.adresse = { old: oldCommande.adresse, new: adresse };
+        if (status !== undefined && oldCommande.status !== status) changes.status = { old: oldCommande.status, new: status };
+        if (finalUserId !== undefined && oldCommande.user_id !== finalUserId) {
+            changes.user_id = { old: oldCommande.user_id, new: finalUserId };
+        }
+
+        const commandeComplet = await Commande.findByPk(req.params.id, {
+            include: [
+                { model: User, attributes: ['nom', 'prenom', 'login', 'email'] },
+                LigneCommande
+            ]
+        });
+
+        // Vérifier que les modifications ont bien été sauvegardées
+        if (Object.keys(changes).length > 0) {
+            console.log('Modifications sauvegardées:', changes);
+        }
+
+        res.json({ commande: formatCommandeWithClient(commandeComplet), changes });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -369,7 +535,7 @@ router.get('/:id', async (req, res) => {
             return res.status(403).json({ message: 'Action non autorisée' });
         }
 
-        res.json(commande);
+        res.json(formatCommandeWithClient(commande));
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -441,6 +607,7 @@ router.put('/:id/lignes/:ligneId', async (req, res) => {
             return res.status(404).json({ message: 'Ligne de commande non trouvée' });
         }
         
+        const oldLigne = { ...ligne.dataValues };
         const { code_article, qte, prix_unitaire, prix_ttc, tva, details } = req.body;
         
         const prixTtc = prix_ttc !== undefined
@@ -456,7 +623,15 @@ router.put('/:id/lignes/:ligneId', async (req, res) => {
             details
         });
         
-        res.json(ligne);
+        const changes = {};
+        if (oldLigne.code_article !== code_article) changes.code_article = { old: oldLigne.code_article, new: code_article };
+        if (oldLigne.qte !== qte) changes.qte = { old: oldLigne.qte, new: qte };
+        if (oldLigne.prix_unitaire !== prix_unitaire) changes.prix_unitaire = { old: oldLigne.prix_unitaire, new: prix_unitaire };
+        if (oldLigne.prix_ttc !== prixTtc) changes.prix_ttc = { old: oldLigne.prix_ttc, new: prixTtc };
+        if (oldLigne.tva !== tva) changes.tva = { old: oldLigne.tva, new: tva };
+        if (oldLigne.details !== details) changes.details = { old: oldLigne.details, new: details };
+        
+        res.json({ ligne, changes });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }

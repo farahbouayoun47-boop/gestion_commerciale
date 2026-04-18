@@ -2,17 +2,15 @@ import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { useNavigate } from 'react-router-dom';
+import { getCookie } from '../utils/cookies';
 
 const Login = () => {
   const [formData, setFormData] = useState({
     name: '',
-    password: '',
-    email: '',
-    role: 'client'
+    password: ''
   });
-  const [isLogin, setIsLogin] = useState(true);
   const [message, setMessage] = useState('');
-  const { login, signup } = useAuth();
+  const { login } = useAuth();
   const { addNotification } = useNotification();
   const navigate = useNavigate();
 
@@ -25,37 +23,24 @@ const Login = () => {
     e.preventDefault();
 
     try {
-      if (isLogin) {
-        // Try admin login first, then client
-        let result = await login({ name: formData.name, password: formData.password, role: 'admin' });
-        if (!result.success) {
-          result = await login({ name: formData.name, password: formData.password, role: 'client' });
-        }
+      const credentials = {
+        login: formData.name,
+        password: formData.password,
+      };
 
-        if (result.success) {
-          addNotification('Connexion réussie', 'success');
-          const userData = JSON.parse(localStorage.getItem('user'));
-          navigate(userData?.role === 'admin' ? '/admin' : '/client');
-        } else {
-          addNotification(result.message || 'Erreur de connexion', 'error');
-          setMessage(result.message || 'Erreur de connexion');
-        }
-        return;
-      }
-
-      const result = await signup({ name: formData.name, email: formData.email, password: formData.password });
+      const result = await login(credentials);
       if (result.success) {
-        addNotification(result.message || 'Inscription réussie', 'success');
-        setMessage('Inscription réussie, veuillez vous connecter.');
-        setIsLogin(true);
-        setFormData({ name: '', password: '', email: '', role: 'client' });
+        addNotification('Connexion réussie', 'success');
+        const userCookie = getCookie('user');
+        const userData = userCookie ? JSON.parse(userCookie) : null;
+        navigate(userData?.role === 'admin' ? '/admin' : '/client');
       } else {
-        addNotification(result.message || 'Erreur d’inscription', 'error');
-        setMessage(result.message || 'Erreur d’inscription');
+        addNotification(result.message || 'Erreur de connexion', 'error');
+        setMessage(result.message || 'Erreur de connexion');
       }
     } catch (error) {
-      addNotification('Erreur lors de l’opération', 'error');
-      setMessage('Erreur lors de l’opération');
+      addNotification('Erreur lors de la connexion', 'error');
+      setMessage('Erreur lors de la connexion');
     }
   };
 
@@ -69,13 +54,13 @@ const Login = () => {
               <div className="mb-8">
                 <p className="text-sm uppercase tracking-[0.32em] text-cyan-300">Gestion Commerciale</p>
                 <h1 className="mt-4 text-4xl font-semibold tracking-tight text-white sm:text-5xl">Connexion sécurisée</h1>
-                <p className="mt-4 max-w-xl text-slate-400">Accédez à votre espace après une connexion valide. Les clients et administrateurs ne peuvent pas entrer sans s’authentifier.</p>
+                <p className="mt-4 max-w-xl text-slate-400">Accédez à votre espace après une connexion valide. Les comptes sont créés uniquement par l'administrateur.</p>
               </div>
 
               <form className="space-y-6" onSubmit={handleSubmit}>
                 <div>
                   <label htmlFor="name" className="text-sm font-medium text-slate-300">
-                    {isLogin ? 'Nom ou email' : 'Nom complet'}
+                    Nom ou email
                   </label>
                   <input
                     id="name"
@@ -85,25 +70,9 @@ const Login = () => {
                     value={formData.name}
                     onChange={handleChange}
                     className="mt-2 w-full rounded-3xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/30"
-                    placeholder={isLogin ? 'Nom ou email' : 'Sara Benali'}
+                    placeholder="Nom ou email"
                   />
                 </div>
-
-                {!isLogin && (
-                  <div>
-                    <label htmlFor="email" className="text-sm font-medium text-slate-300">Adresse email</label>
-                    <input
-                      id="email"
-                      name="email"
-                      type="email"
-                      required
-                      value={formData.email}
-                      onChange={handleChange}
-                      className="mt-2 w-full rounded-3xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/30"
-                      placeholder="sara@domaine.com"
-                    />
-                  </div>
-                )}
 
                 <div>
                   <label htmlFor="password" className="text-sm font-medium text-slate-300">Mot de passe</label>
@@ -115,7 +84,7 @@ const Login = () => {
                     value={formData.password}
                     onChange={handleChange}
                     className="mt-2 w-full rounded-3xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/30"
-                    placeholder="••••••••" 
+                    placeholder="••••••••"
                   />
                 </div>
 
@@ -125,23 +94,14 @@ const Login = () => {
                   type="submit"
                   className="w-full rounded-3xl bg-gradient-to-r from-cyan-500 via-sky-500 to-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-cyan-500/20 transition hover:brightness-110"
                 >
-                  {isLogin ? 'Se connecter' : 'S’inscrire'}
+                  Se connecter
                 </button>
               </form>
 
-              <div className="mt-6 flex items-center justify-between text-sm text-slate-400">
-                <span>{isLogin ? 'Pas encore de compte ?' : 'Déjà un compte ?'}</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsLogin(!isLogin);
-                    setMessage('');
-                    setFormData({ name: '', password: '', email: '', role: 'client' });
-                  }}
-                  className="font-semibold text-cyan-300 hover:text-cyan-200"
-                >
-                  {isLogin ? 'Créer un compte' : 'Se connecter'}
-                </button>
+              <div className="mt-6 text-center">
+                <p className="text-sm text-slate-400">
+                  Les comptes sont créés uniquement par l'administrateur.
+                </p>
               </div>
             </div>
 
@@ -149,7 +109,6 @@ const Login = () => {
               <div>
                 <p className="text-sm uppercase tracking-[0.32em] text-cyan-300">Bienvenue</p>
                 <h2 className="mt-6 text-4xl font-semibold text-white">Votre espace de gestion</h2>
-               
               </div>
             </div>
           </div>
