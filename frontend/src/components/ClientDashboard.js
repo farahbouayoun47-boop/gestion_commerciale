@@ -5,13 +5,22 @@ import OrderList from './client/OrderList';
 import OrderDetails from './client/OrderDetails';
 import ClientProfile from './client/ClientProfile';
 const ClientDashboard = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, loading } = useAuth();
   const navigate = useNavigate();
   const [currentPage, setCurrentPage] = useState('orders');
   const [pageParams, setPageParams] = useState({});
 
-  // Check if user account is approved
-  if (!user?.is_active) {
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-100 dark:bg-slate-900 flex items-center justify-center p-4">
+        <div className="rounded-2xl bg-white p-8 shadow-lg ring-1 ring-slate-200 dark:bg-slate-800 dark:ring-slate-700">
+          <p className="text-center text-slate-700 dark:text-slate-200">Chargement de votre compte...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (user?.is_active === false) {
     return (
       <div className="min-h-screen bg-slate-100 dark:bg-slate-900 flex items-center justify-center p-4">
         <div className="max-w-md w-full rounded-2xl bg-white p-8 shadow-lg ring-1 ring-slate-200 dark:bg-slate-800 dark:ring-slate-700">
@@ -85,7 +94,7 @@ const ClientDashboard = () => {
       case 'order-details':
         return <OrderDetails orderId={pageParams.orderId} onNavigate={handleNavigate} />;
       case 'profile':
-        return <ClientProfile />;
+        return <ClientProfile onNavigate={handleNavigate} />;
       default:
         return <OrderList onNavigate={handleNavigate} />;
     }

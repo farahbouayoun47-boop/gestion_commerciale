@@ -3,7 +3,7 @@ import { getClientProfile, updateClientProfile, changePassword } from '../../ser
 import { useNotification } from '../../contexts/NotificationContext';
 import { validateEmail, validatePhone } from '../../utils/formatters';
 
-const ClientProfile = () => {
+const ClientProfile = ({ onNavigate }) => {
   const [activeTab, setActiveTab] = useState('info');
   const [profile, setProfile] = useState({
     firstName: '',
@@ -93,8 +93,17 @@ const ClientProfile = () => {
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Mon Profil</h1>
+    <div className="mx-auto w-full max-w-3xl space-y-6 px-4 sm:px-0">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Mon Profil</h1>
+        <button
+          type="button"
+          onClick={() => onNavigate?.('orders')}
+          className="inline-flex items-center justify-center rounded-md bg-slate-100 px-4 py-2 text-sm font-medium text-slate-900 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+        >
+          Retour à l'accueil
+        </button>
+      </div>
 
       <div className="border-b border-slate-200 dark:border-slate-700">
         <nav className="-mb-px flex space-x-8">

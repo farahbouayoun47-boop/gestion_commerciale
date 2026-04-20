@@ -11,8 +11,10 @@ const sortOrdersByDate = (ordersList) => {
 export const getClientCommandes = async () => {
   try {
     const orders = await getOrders();
+    console.log('Raw orders from API:', orders);
+    
     // Transform the data to match frontend expectations
-    const transformedOrders = orders.map(order => {
+    const transformedOrders = (orders || []).map(order => {
       const totalAmount = order.LigneCommandes ? 
         order.LigneCommandes.reduce((sum, ligne) => sum + parseFloat(ligne.prix_ttc || 0), 0) : 0;
       
@@ -49,7 +51,7 @@ export const getClientCommandes = async () => {
         price: parseFloat(ligne.prix_unitaire || ligne.price || 0) || 0
       }));
       
-      return {
+      const transformed = {
         id: order.id,
         numero: order.numero,
         date: order.date,
@@ -66,7 +68,12 @@ export const getClientCommandes = async () => {
         items: transformedLignes,
         lignes: lignesSource
       };
+      
+      console.log(`Transformed order #${order.numero}:`, transformed);
+      return transformed;
     });
+    
+    console.log('Total transformed orders:', transformedOrders.length);
     return sortOrdersByDate(transformedOrders);
   } catch (error) {
     console.error('Erreur getClientCommandes:', error);

@@ -1,9 +1,9 @@
 import { getClients, getClientById, createClient, updateClient, deleteClient } from './apiService';
-import { getCookie, setCookie } from '../utils/cookies';
+import { getStorageItem, setStorageItem } from '../utils/storage';
 import { API_BASE_URL } from '../utils/constants';
 
 const getAuthHeaders = () => {
-  const token = getCookie('token');
+  const token = getStorageItem('token');
   return {
     'Content-Type': 'application/json',
     ...(token && { 'Authorization': `Bearer ${token}` }),
@@ -12,7 +12,28 @@ const getAuthHeaders = () => {
 
 export const getClientsList = async () => {
   try {
-    return await getClients();
+    const rawClients = await getClients();
+    console.log('Raw clients from API:', rawClients);
+    
+    // Transform and normalize clients data
+    const transformedClients = (rawClients || []).map(client => {
+      const transformed = {
+        id: client.id,
+        nom: client.nom || client.name || client.lastName || '',
+        prenom: client.prenom || client.firstName || client.first_name || '',
+        email: client.email || client.login || '',
+        telephone: client.telephone || client.phone || '',
+        entreprise: client.entreprise || client.company || '',
+        adresse: client.adresse || client.address || '',
+        role: client.role || 'client',
+        is_active: client.is_active !== undefined ? client.is_active : true
+      };
+      console.log(`Transformed client #${client.id}: ${transformed.prenom} ${transformed.nom}`);
+      return transformed;
+    });
+    
+    console.log('Total transformed clients:', transformedClients.length);
+    return transformedClients;
   } catch (error) {
     console.error('Erreur getClientsList:', error);
     return [];
@@ -57,7 +78,7 @@ export const deleteClientService = async (id) => {
 
 export const getClientProfile = async () => {
   try {
-    const userCookie = getCookie('user');
+    const userCookie = getStorageItem('user');
     const user = userCookie ? JSON.parse(userCookie) : null;
     if (!user) return null;
 
@@ -80,7 +101,7 @@ export const getClientProfile = async () => {
 
 export const updateClientProfile = async (profileData) => {
   try {
-    const userCookie = getCookie('user');
+    const userCookie = getStorageItem('user');
     const user = userCookie ? JSON.parse(userCookie) : null;
     if (!user) throw new Error('Profil introuvable');
 
@@ -93,7 +114,7 @@ export const updateClientProfile = async (profileData) => {
       phone: profileData.phone || user.phone || '',
     };
 
-    setCookie('user', JSON.stringify(updatedUser));
+    setStorageItem('user', JSON.stringify(updatedUser));
 
     // TODO: Appeler l'API pour mettre à jour le profil côté serveur
     // await updateClient(user.id, { name: profileName, email: updatedUser.email, phone: updatedUser.phone });

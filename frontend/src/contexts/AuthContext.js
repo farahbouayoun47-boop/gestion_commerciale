@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { loginUser, registerUser, getCurrentUser } from '../services/authService';
 import { updateClientProfile as saveClientProfile } from '../services/clientService';
-import { setCookie, getCookie, deleteCookie } from '../utils/cookies';
+import { getStorageItem, setStorageItem, removeStorageItem } from '../utils/storage';
 
 const AuthContext = createContext();
 
@@ -19,21 +19,22 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const initAuth = async () => {
-      const token = getCookie('token');
+      const token = getStorageItem('token');
       if (token) {
         try {
           const userData = await getCurrentUser();
           if (userData) {
             setUser(userData);
+            setStorageItem('user', JSON.stringify(userData));
           } else {
-            // Token invalide, nettoyer les cookies
-            deleteCookie('token');
-            deleteCookie('user');
+            // Token invalide, nettoyer le stockage local
+            removeStorageItem('token');
+            removeStorageItem('user');
           }
         } catch (error) {
           console.error('Erreur lors de la récupération du profil:', error);
-          deleteCookie('token');
-          deleteCookie('user');
+          removeStorageItem('token');
+          removeStorageItem('user');
         }
       }
       setLoading(false);
@@ -53,9 +54,9 @@ export const AuthProvider = ({ children }) => {
         const response = await loginUser(adminCredentials);
         const { token, user: userData } = response;
         setUser(userData);
-        setCookie('token', token);
-        setCookie('user', JSON.stringify(userData));
-        return { success: true };
+        setStorageItem('token', token);
+        setStorageItem('user', JSON.stringify(userData));
+        return { success: true, user: userData };
       } catch (error) {
         console.error('Admin login failed:', error);
         return { success: false, message: error.message || 'Connexion admin échouée. Vérifiez que le backend est démarré.' };
@@ -67,10 +68,10 @@ export const AuthProvider = ({ children }) => {
       const { token, user: userData } = response;
 
       setUser(userData);
-      setCookie('token', token);
-      setCookie('user', JSON.stringify(userData));
+      setStorageItem('token', token);
+      setStorageItem('user', JSON.stringify(userData));
 
-      return { success: true };
+      return { success: true, user: userData };
     } catch (error) {
       return { success: false, message: error.message };
     }
@@ -78,14 +79,14 @@ export const AuthProvider = ({ children }) => {
 
   const logout = () => {
     setUser(null);
-    deleteCookie('token');
-    deleteCookie('user');
+    removeStorageItem('token');
+    removeStorageItem('user');
   };
 
   const updateProfile = async (profileData) => {
     const updatedUser = { ...user, ...profileData };
     setUser(updatedUser);
-    setCookie('user', JSON.stringify(updatedUser));
+    setStorageItem('user', JSON.stringify(updatedUser));
     try {
       await saveClientProfile(profileData);
     } catch (error) {

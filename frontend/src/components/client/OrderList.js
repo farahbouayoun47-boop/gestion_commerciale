@@ -22,7 +22,9 @@ const OrderList = ({ onNavigate }) => {
   const loadOrders = async () => {
     setLoading(true);
     try {
+      console.log('Loading client orders...');
       const data = await getClientCommandes();
+      console.log('Client orders loaded:', data?.length || 0);
       setOrders(data || []);
     } catch (error) {
       console.error('Error loading orders:', error);

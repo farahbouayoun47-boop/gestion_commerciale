@@ -1,5 +1,5 @@
 import { API_BASE_URL } from '../utils/constants';
-import { getCookie, deleteCookie } from '../utils/cookies';
+import { getStorageItem, removeStorageItem } from '../utils/storage';
 
 const parseJsonResponse = async (response) => {
   const text = await response.text();
@@ -62,7 +62,7 @@ export const registerUser = async (userData) => {
 
 export const getCurrentUser = async () => {
   try {
-    const token = getCookie('token');
+    const token = getStorageItem('token');
     if (!token) return null;
 
     const response = await fetch(`${API_BASE_URL}/auth/me`, {
@@ -75,8 +75,8 @@ export const getCurrentUser = async () => {
 
     if (!response.ok) {
       if (response.status === 401) {
-        deleteCookie('token');
-        deleteCookie('user');
+        removeStorageItem('token');
+        removeStorageItem('user');
         return null;
       }
       throw new Error('Erreur de récupération du profil');

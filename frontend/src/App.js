@@ -11,7 +11,11 @@ import PrivateRoute from './components/PrivateRoute';
 import NotificationContainer from './components/common/NotificationContainer';
 
 function AppContent() {
-  const { isAuthenticated, isAdmin } = useAuth();
+  const { isAuthenticated, isAdmin, loading } = useAuth();
+
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center">Chargement de la session...</div>;
+  }
 
   return (
     <Router>

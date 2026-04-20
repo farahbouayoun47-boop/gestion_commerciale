@@ -6,7 +6,8 @@ import { formatPrice } from '../utils/formatters';
 import { exportOrdersToExcel } from '../utils/excelExport';
 import { exportOrderToPdf } from '../utils/pdfExport';
 import { importOrdersFromExcel } from '../utils/excelImport';
-import { getCookie } from '../utils/cookies';
+import { getStorageItem } from '../utils/storage';
+import { API_BASE_URL } from '../utils/constants';
 const statusOptions = ['En attente', 'En cours', 'Livrée', 'Annulée'];
 
 const initialOrderForm = {
@@ -56,6 +57,8 @@ const AdminDashboard = () => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [submittingOrder, setSubmittingOrder] = useState(false);
+  const [submittingClient, setSubmittingClient] = useState(false);
   const ordersPerPage = 5;
   const [profileForm, setProfileForm] = useState({
     name: user?.name || '',
@@ -73,6 +76,16 @@ const AdminDashboard = () => {
     adresse: '',
   });
 
+  // Auto-clear messages after 3 seconds
+  useEffect(() => {
+    if (message) {
+      const timer = setTimeout(() => {
+        setMessage('');
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [message]);
+
   useEffect(() => {
     loadData();
   }, []);
@@ -80,10 +93,14 @@ const AdminDashboard = () => {
   const loadData = async () => {
     setLoading(true);
     try {
+      console.log('Loading data from backend...');
       const [orderData, clientData] = await Promise.all([
         getClientCommandes(), 
         getClientsList()
       ]);
+
+      console.log('Orders received:', orderData?.length || 0);
+      console.log('Clients received:', clientData?.length || 0);
 
       const enrichedOrders = (orderData || []).map((order) => {
         let clientName = order.client;
@@ -105,10 +122,14 @@ const AdminDashboard = () => {
         };
       });
 
+      console.log('Final enriched orders:', enrichedOrders.length);
+      console.log('Final clients:', clientData?.length || 0);
+
       setOrders(enrichedOrders);
       setClients(clientData || []);
     } catch (error) {
       console.error('Error loading data:', error);
+      setMessage(`Erreur lors du chargement des données: ${error.message}`);
       setOrders([]);
       setClients([]);
     }
@@ -238,6 +259,9 @@ const AdminDashboard = () => {
       return;
     }
 
+    setSubmittingOrder(true);
+    setMessage(''); // Clear any previous messages
+
     const orderData = {
       numero: orderForm.numero.trim(),
       client: orderForm.client.trim(),
@@ -284,6 +308,8 @@ const AdminDashboard = () => {
       const message = error?.message || 'Erreur inconnue';
       setMessage(`Erreur: ${message}`);
       console.error('Order submit error:', error);
+    } finally {
+      setSubmittingOrder(false);
     }
   };
 
@@ -293,6 +319,9 @@ const AdminDashboard = () => {
       setMessage('Complétez le nom et le prénom du client.');
       return;
     }
+
+    setSubmittingClient(true);
+    setMessage(''); // Clear any previous messages
 
     const clientData = {
       nom: clientForm.nom,
@@ -320,11 +349,11 @@ const AdminDashboard = () => {
           role: 'client',
         };
 
-        const userResponse = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/users`, {
+        const userResponse = await fetch(`${API_BASE_URL}/users`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${getCookie('token')}`,
+            'Authorization': `Bearer ${getStorageItem('token')}`,
           },
           body: JSON.stringify(userData),
         });
@@ -347,6 +376,8 @@ const AdminDashboard = () => {
       } else {
         setMessage(`Erreur lors de l'enregistrement du client : ${message}`);
       }
+    } finally {
+      setSubmittingClient(false);
     }
   };
 
@@ -582,11 +613,11 @@ const AdminDashboard = () => {
       const login = `${defaultLoginBase || 'client'}@client.local`;
       const password = `Pwd${Math.random().toString(36).slice(2, 10)}`;
 
-      const userResponse = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/users`, {
+      const userResponse = await fetch(`${API_BASE_URL}/users`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getCookie('token')}`,
+          'Authorization': `Bearer ${getStorageItem('token')}`,
         },
         body: JSON.stringify({
           nom: quickClientForm.nom,
@@ -783,7 +814,27 @@ const AdminDashboard = () => {
 
         {(() => {
           if (loading) {
-            return <div className="rounded-3xl bg-white p-6 shadow dark:bg-slate-800">Chargement...</div>;
+            return (
+              <div className="rounded-3xl bg-white p-12 shadow dark:bg-slate-800 flex flex-col items-center justify-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 dark:border-indigo-400 mb-4"></div>
+                <p className="text-slate-600 dark:text-slate-300">Chargement des commandes et clients...</p>
+              </div>
+            );
+          }
+          if (message.error) {
+            return (
+              <div className="rounded-3xl bg-red-50 p-6 shadow dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+                <div className="flex items-start">
+                  <svg className="h-6 w-6 text-red-600 dark:text-red-400 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4v2m0-6a4 4 0 110 8 4 4 0 010-8z" />
+                  </svg>
+                  <div className="ml-3">
+                    <p className="text-sm font-medium text-red-800 dark:text-red-200">{message.error}</p>
+                    <p className="mt-1 text-sm text-red-700 dark:text-red-300">Vérifiez votre connexion API et réessayez.</p>
+                  </div>
+                </div>
+              </div>
+            );
           }
           if (activeTab === 'orders') {
             const filteredOrders = (orders || []).filter((order) => {
@@ -891,50 +942,64 @@ const AdminDashboard = () => {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-700 dark:bg-slate-800">
-                        {paginatedOrders.map((order) => (
-                          <tr key={order.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 border-b border-slate-100 dark:border-slate-700 last:border-b-0">
-                            <td className="px-6 py-4 text-slate-900 dark:text-white font-medium border-r border-slate-100 dark:border-slate-700 last:border-r-0">{order.numero}</td>
-                            <td className="px-6 py-4 text-slate-700 dark:text-slate-300 border-r border-slate-100 dark:border-slate-700 last:border-r-0">{order.client}</td>
-                            <td className="px-6 py-4 text-slate-700 dark:text-slate-300 border-r border-slate-100 dark:border-slate-700 last:border-r-0">{order.date}</td>
-                            <td className="px-6 py-4 text-right text-slate-900 dark:text-white font-medium border-r border-slate-100 dark:border-slate-700 last:border-r-0">{formatPrice(order.amount || 0)}</td>
-                            <td className="px-6 py-4 text-slate-700 dark:text-slate-300 border-r border-slate-100 dark:border-slate-700 last:border-r-0">
-                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                                order.status === 'Livrée' ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400' :
-                                order.status === 'En attente' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400' :
-                                order.status === 'En cours' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400' :
-                                'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
-                              }`}>
-                                {order.status}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-right space-x-3">
-                              <button
-                                onClick={() => handleOrderDetails(order)}
-                                className="inline-flex items-center rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                              >
-                                Détails
-                              </button>
-                              <button
-                                onClick={() => handleOrderEdit(order)}
-                                className="inline-flex items-center rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
-                              >
-                                Modifier
-                              </button>
-                              <button
-                                onClick={() => handleOrderDelete(order.id)}
-                                className="inline-flex items-center rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
-                              >
-                                Supprimer
-                              </button>
+                        {paginatedOrders.length === 0 ? (
+                          <tr>
+                            <td colSpan="6" className="px-6 py-12 text-center">
+                              <div className="flex flex-col items-center justify-center">
+                                <svg className="h-12 w-12 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                <h3 className="mt-4 text-lg font-medium text-slate-900 dark:text-white">Aucune commande</h3>
+                                <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Aucune commande trouvée. Commencez par en ajouter une.</p>
+                              </div>
                             </td>
                           </tr>
-                        ))}
+                        ) : (
+                          paginatedOrders.map((order) => (
+                            <tr key={order.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 border-b border-slate-100 dark:border-slate-700 last:border-b-0">
+                              <td className="px-6 py-4 text-slate-900 dark:text-white font-medium border-r border-slate-100 dark:border-slate-700 last:border-r-0">{order.numero}</td>
+                              <td className="px-6 py-4 text-slate-700 dark:text-slate-300 border-r border-slate-100 dark:border-slate-700 last:border-r-0">{order.client}</td>
+                              <td className="px-6 py-4 text-slate-700 dark:text-slate-300 border-r border-slate-100 dark:border-slate-700 last:border-r-0">{order.date}</td>
+                              <td className="px-6 py-4 text-right text-slate-900 dark:text-white font-medium border-r border-slate-100 dark:border-slate-700 last:border-r-0">{formatPrice(order.amount || 0)}</td>
+                              <td className="px-6 py-4 text-slate-700 dark:text-slate-300 border-r border-slate-100 dark:border-slate-700 last:border-r-0">
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                  order.status === 'Livrée' ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400' :
+                                  order.status === 'En attente' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400' :
+                                  order.status === 'En cours' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400' :
+                                  'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
+                                }`}>
+                                  {order.status}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 text-right space-x-3">
+                                <button
+                                  onClick={() => handleOrderDetails(order)}
+                                  className="inline-flex items-center rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                                >
+                                  Détails
+                                </button>
+                                <button
+                                  onClick={() => handleOrderEdit(order)}
+                                  className="inline-flex items-center rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
+                                >
+                                  Modifier
+                                </button>
+                                <button
+                                  onClick={() => handleOrderDelete(order.id)}
+                                  className="inline-flex items-center rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                                >
+                                  Supprimer
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
                       </tbody>
                     </table>
                   </div>
 
                   {/* Pagination */}
-                  {totalPages > 1 && (
+                  {paginatedOrders.length > 0 && totalPages > 1 && (
                     <div className="mt-8 flex items-center justify-between">
                       <div className="text-sm text-slate-700 dark:text-slate-300">
                         Affichage de {Math.min((currentPage - 1) * ordersPerPage + 1, filteredOrders.length)} à {Math.min(currentPage * ordersPerPage, filteredOrders.length)} sur {filteredOrders.length} commandes
@@ -1182,9 +1247,20 @@ const AdminDashboard = () => {
                     <div className="flex flex-col gap-3 pt-6 border-t border-slate-200 dark:border-slate-700">
                       <button
                         type="submit"
-                        className="w-full rounded-lg bg-indigo-600 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                        disabled={submittingOrder}
+                        className="w-full rounded-lg bg-indigo-600 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                       >
-                        {editingOrder ? 'Enregistrer les modifications' : 'Créer la commande'}
+                        {submittingOrder ? (
+                          <>
+                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            {editingOrder ? 'Modification en cours...' : 'Création en cours...'}
+                          </>
+                        ) : (
+                          editingOrder ? 'Enregistrer les modifications' : 'Créer la commande'
+                        )}
                       </button>
                       {editingOrder && (
                         <button
@@ -1379,9 +1455,20 @@ const AdminDashboard = () => {
                     <div className="flex flex-col gap-3 pt-6 border-t border-slate-200 dark:border-slate-700">
                       <button
                         type="submit"
-                        className="w-full rounded-lg bg-indigo-600 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                        disabled={submittingClient}
+                        className="w-full rounded-lg bg-indigo-600 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                       >
-                        {editingClient ? 'Enregistrer les modifications' : 'Ajouter le client'}
+                        {submittingClient ? (
+                          <>
+                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            {editingClient ? 'Modification en cours...' : 'Création en cours...'}
+                          </>
+                        ) : (
+                          editingClient ? 'Enregistrer les modifications' : 'Ajouter le client'
+                        )}
                       </button>
                       {editingClient && (
                         <button
@@ -1402,11 +1489,20 @@ const AdminDashboard = () => {
             return (
               <div className="max-w-2xl mx-auto">
                 <section className="rounded-2xl bg-white p-8 shadow-sm ring-1 ring-slate-200 dark:bg-slate-800 dark:ring-slate-700">
-                  <div className="mb-8">
-                    <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Mon Profil</h2>
-                    <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-                      Gérez vos informations personnelles et votre mot de passe
-                    </p>
+                  <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Mon Profil</h2>
+                      <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                        Gérez vos informations personnelles et votre mot de passe
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('orders')}
+                      className="inline-flex items-center justify-center rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-900 hover:bg-slate-200 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-700"
+                    >
+                      Retour à l'accueil
+                    </button>
                   </div>
 
                   <form className="space-y-8" onSubmit={handleProfileSubmit}>

@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import { useNavigate } from 'react-router-dom';
-import { getCookie } from '../utils/cookies';
 
 const Login = () => {
   const [formData, setFormData] = useState({
@@ -31,8 +30,7 @@ const Login = () => {
       const result = await login(credentials);
       if (result.success) {
         addNotification('Connexion réussie', 'success');
-        const userCookie = getCookie('user');
-        const userData = userCookie ? JSON.parse(userCookie) : null;
+        const userData = result.user || null;
         navigate(userData?.role === 'admin' ? '/admin' : '/client');
       } else {
         addNotification(result.message || 'Erreur de connexion', 'error');

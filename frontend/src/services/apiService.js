@@ -1,8 +1,8 @@
 import { API_BASE_URL } from '../utils/constants';
-import { getCookie } from '../utils/cookies';
+import { getStorageItem } from '../utils/storage';
 
 const getAuthHeaders = () => {
-  const token = getCookie('token');
+  const token = getStorageItem('token');
   return {
     'Content-Type': 'application/json',
     ...(token && { 'Authorization': `Bearer ${token}` }),
@@ -11,10 +11,17 @@ const getAuthHeaders = () => {
 
 export const getOrders = async () => {
   try {
-    const response = await fetch(`${API_BASE_URL}/commandes`, {
+    let response = await fetch(`${API_BASE_URL}/commandes`, {
       method: 'GET',
       headers: getAuthHeaders(),
     });
+
+    if (response.status === 404) {
+      response = await fetch(`${API_BASE_URL}/orders`, {
+        method: 'GET',
+        headers: getAuthHeaders(),
+      });
+    }
 
     if (!response.ok) {
       throw new Error('Erreur lors de la récupération des commandes');
@@ -28,10 +35,17 @@ export const getOrders = async () => {
 
 export const getOrderById = async (id) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/commandes/${id}`, {
+    let response = await fetch(`${API_BASE_URL}/commandes/${id}`, {
       method: 'GET',
       headers: getAuthHeaders(),
     });
+
+    if (response.status === 404) {
+      response = await fetch(`${API_BASE_URL}/orders/${id}`, {
+        method: 'GET',
+        headers: getAuthHeaders(),
+      });
+    }
 
     if (!response.ok) {
       if (response.status === 404) return null;
@@ -102,10 +116,24 @@ export const deleteOrder = async (id) => {
 
 export const getClients = async () => {
   try {
-    const response = await fetch(`${API_BASE_URL}/clients`, {
+    let response = await fetch(`${API_BASE_URL}/clients`, {
       method: 'GET',
       headers: getAuthHeaders(),
     });
+
+    if (response.status === 404) {
+      response = await fetch(`${API_BASE_URL}/users?role=client`, {
+        method: 'GET',
+        headers: getAuthHeaders(),
+      });
+    }
+
+    if (response.status === 404) {
+      response = await fetch(`${API_BASE_URL}/users`, {
+        method: 'GET',
+        headers: getAuthHeaders(),
+      });
+    }
 
     if (!response.ok) {
       throw new Error('Erreur lors de la récupération des clients');
@@ -119,10 +147,17 @@ export const getClients = async () => {
 
 export const getClientById = async (id) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/clients/${id}`, {
+    let response = await fetch(`${API_BASE_URL}/clients/${id}`, {
       method: 'GET',
       headers: getAuthHeaders(),
     });
+
+    if (response.status === 404) {
+      response = await fetch(`${API_BASE_URL}/users/${id}`, {
+        method: 'GET',
+        headers: getAuthHeaders(),
+      });
+    }
 
     if (!response.ok) {
       if (response.status === 404) return null;
